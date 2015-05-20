@@ -1,0 +1,212 @@
+(require 2htdp/image)
+(require 2htdp/universe)
+
+
+;;=========================================
+
+;; Constants
+
+
+(define WIDTH 800)
+(define HEIGHT WIDTH)
+(define CUTOFF 1)
+(define STEP (/ 2 5))
+
+(define MTS (rectangle WIDTH HEIGHT "solid" (make-color 0 0 5 255)))
+
+
+(define SPEED 5)
+
+(define ROTATE 5)
+(define FW-SIZE 200)
+
+
+
+
+;;=================================================
+
+;; Data Definitions
+
+(define-struct fw (x y r b))
+;; Firework is (make-fw Number Number Number Boolean)
+;; interp. the x, y position of a firework in screen coordinates (pixels), and rotation angle r
+;; and boolean B=True if Firework is unexploded, B=False if Firework is exploded.
+
+(define E1 (make-fw 100 50 23 true))
+(define E2 (make-fw 0 0 0 false))
+(define E3 (make-fw 20 30 50 true))
+
+#;
+(define (fn-for-fw e)
+  (...(if (fw-b e)
+      (...(fw-x e)
+          (fw-y e)
+          (fw-r e)
+          (fw-b e))
+      (...(fw-x e)
+          (fw-y e)
+          (fw-r e)
+          (fw-b e)))))
+
+;; Template rules used:
+;; - compound: 2 fields
+
+
+;; ListOffw is one of:
+;; - empty
+;; - (cons fw ListOfFw)
+;; interp. a list of Fireworks
+(define LOFW1 empty)
+(define LOFW2 (cons E1 empty))
+(define LOFW3 (cons E1 (cons E2 empty)))
+
+#;
+(define (fn-for-lofw lofw)
+  (cond [(empty? lofw)(...)]
+        [else
+         (... (fn-for-fw (first lofw)
+                          (fn-for-lofw (rest lofw))))]))
+
+;; Template rules used:
+;; - one of: 2 cases
+;; - atomic distinct: empty
+;; - compound: 2 fields
+;; - reference: (first lofw) is fw
+;; - self-reference: (rest lofw) is ListOfFw
+
+;;===================================================
+
+;; Functions:
+
+;; ListOfFw -> ListOfFw
+;; start the world with (main lofw)
+
+(define (main lofw)
+  (big-bang lofw                             ;ListOffw
+            (on-tick next-fw)              ;ListOffw -> ListOffw
+            (to-draw render-fw)            ;ListOffw -> Image
+            (on-key clean-slate)            ;ListOffw KeyEvent -> ListOffw
+            (on-mouse handle-mouse)))       ;ListOffw Number Number MouseEvent -> Image
+;; ListOffw -> ListOffw
+;; produce the next list of fws advancing and rotating them;
+;; keeping only the onscreen ones.
+(check-expect (next-fw empty) empty)
+(check-expect (next-fw empty) empty)
+(check-expect (next-fw (cons (make-fw 10 20 30 true) empty))
+                (cons (make-fw 10 (+ 20 SPEED)(+ 30 ROTATE) false) empty))
+(check-expect (next-fw (cons (make-fw 10 (+ HEIGHT FW-SIZE) 30 false) empty))
+                empty)
+
+;(define (next-fw lofw) lofw);stub
+
+
+
+(define (next-fw lofw)
+  (local [;; <took template from Firework>
+          (define (fw-boom e)
+            (if(<= (fw-y e) 20)
+                   (make-fw (fw-x e)
+                             (+ (fw-y e) SPEED)
+                             (+ (fw-r e) ROTATE)
+                             (not (fw-b e)))
+                  (if (fw-b e)
+                            (make-fw (fw-x e)
+                                      (- (fw-y e) SPEED)
+                                      (+ (fw-r e) ROTATE)
+                                      (fw-b e))
+                            (make-fw (fw-x e)
+                                      (+ (fw-y e) SPEED)
+                                      (+ (fw-r e) ROTATE)
+                                      (fw-b e)))))
+          
+          (define EDGE 
+            (+ FW-SIZE HEIGHT))
+          
+          (define (onscreen-only lofw)
+            (filter (lambda (n) (< (fw-y n) EDGE)) lofw))
+          
+          (define (tick-fw lofw)
+            (map fw-boom lofw))]
+    (tick-fw (onscreen-only lofw))))
+
+
+;; ListOffw -> Image
+;; produce an fw at appropriate location on MTS for each fw in lofw
+; (check-expect (render-egg empty) MTS)
+; (check-expect (render-egg (cons (make-egg 10 20 30)
+;                                 (cons (make-egg 20 30 40) empty)))
+;               (place-egg (make-egg 10 20 30)
+;                          (place-egg (make-egg 20 30 40) MTS)))
+
+
+;(define (render-fw lofw) MTS) ;stub
+
+
+
+(define (render-fw lofw)
+  (local [(define (place-fw e img)
+            (if (fw-b e)
+                (place-image 
+                 (rotate (-(fw-r e)) 
+                         (circle (* FW-SIZE 0.05)
+                                 "solid" "snow"
+                                 #;(make-color
+                                  (random 255)
+                                  (random 255)
+                                  (random 255)
+                                  255)))
+                 (fw-x e)
+                 (fw-y e)
+                 img)
+                (place-image (rotate (-(fw-r e))
+                                     (radial-star
+                                      500
+                                      (random 50)
+                                      FW-SIZE
+                                      "solid"
+                                      (make-color
+                                       (random 255)
+                                       (random 255)
+                                       (random 255)
+                                       255)))
+                             (fw-x e)
+                             (fw-y e)
+                             img)))]
+    (foldr place-fw MTS lofw)))
+
+
+
+;; ListOfFw Number Number MouseEvent -> Image
+;; produce an fw at x, y when the mouse is clicked or dragged
+;; if x,y over an fw then fw is removed
+;; !!!
+#;(check-expect (handle-mouse empty 10 40 "button-down")
+                (cons (make-fw 10 40 0) empty))
+#;(check-expect (handle-mouse empty 90 100 "drag")
+                (cons (make-fw 90 100 0) empty))
+;(define (handle-mouse e x y me) e) ;stub
+
+;;<template according to MouseEvent>
+
+(define (handle-mouse lofw x y me)
+  (cond [(mouse=? me "button-down")
+         (cons (make-fw x y 0 true)
+               lofw)]
+        [(mouse=? me "drag")
+         (cons (make-fw x y 0 true)
+               lofw)]
+        
+        [else
+         lofw]))
+
+;; LOD KeyEvent -> LOD
+;; if space is pressed, erases all the dots (i.e: ListOffw reverts to empty) 
+;; i.e.: a "clean slate" to start again.
+
+(define (clean-slate lofw ke)
+  (cond [(key=? ke " ") empty]
+        [else 
+         lofw]))
+
+
+(main empty)
